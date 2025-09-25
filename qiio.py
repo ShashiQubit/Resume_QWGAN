@@ -264,6 +264,7 @@ class qGAN(tf.keras.Model):
          - preprocessed_data is the preprocessed log-returns without the last normalization step and without windows
           (for reversing the process of generated samples using the mean and std and evaluating the RMSEs)
         """
+        last_epoch = 1500 
         for epoch in range(self.num_epochs):
             print(f'Processing epoch {epoch+1}/{self.num_epochs}')
             ################################################################
@@ -398,9 +399,11 @@ class qGAN(tf.keras.Model):
             self.emd_avg.append(emd)
 
             # checkpoint saving
+        
             if (epoch + 1) % 20 == 0:
-                self.generator.save_weights(f"checkpoints/generator_iio_epoch_{epoch+1}.weights.h5")
-                self.critic.save_weights(f"checkpoints/critic_epoch_iio_{epoch+1}.weights.h5")
+                save_epoch = last_epoch + (epoch + 1)
+                self.generator.save_weights(f"checkpoints/generator_iio_epoch_{save_epoch}.weights.h5")
+                self.critic.save_weights(f"checkpoints/critic_epoch_iio_{save_epoch}.weights.h5")
 
             # print progress every 100 epochs
             if epoch % 100 == 0 or epoch+1 == 3000:
@@ -558,6 +561,10 @@ c_optimizer = tf.keras.optimizers.Adam()
 g_optimizer = tf.keras.optimizers.Adam()
 qgan.compile_QGAN(c_optimizer, g_optimizer)
 
+# load last saved checkpoint weights
+qgan.generator.load_weights("checkpoints/generator_iio_epoch_1500.weights.h5")
+qgan.critic.load_weights("checkpoints/critic_epoch_iio_1500.weights.h5")
+
 ##################################################################################
 #
 # Data pre-processing
@@ -581,19 +588,22 @@ print(f'\nQWGAN training completed. Training time: --- {exec_time_train/3600:.02
 
 # code to SAVE qgan arrays in a file like emd_avg , acf etc
 
-import numpy as np
+# resume metrics
+if os.path.exists("qgan_metrics.npy"):
+    prev = np.load("qgan_metrics.npy", allow_pickle=True).item()
+    qgan.emd_avg = prev['emd_avg'] + qgan.emd_avg
+    qgan.acf_avg = prev['acf_avg'] + qgan.acf_avg
+    qgan.vol_avg = prev['vol_avg'] + qgan.vol_avg
+    qgan.lev_avg = prev['lev_avg'] + qgan.lev_avg
 
-# Create a dictionary to store the arrays
+# after resumed training
 qgan_metrics = {
     'emd_avg': qgan.emd_avg,
     'acf_avg': qgan.acf_avg,
     'vol_avg': qgan.vol_avg,
     'lev_avg': qgan.lev_avg
 }
-
-# Save the dictionary to a file
 np.save('qgan_metrics.npy', qgan_metrics)
-
 print("QGAN metrics saved to qgan_metrics.npy")
 
 critic_loss = tf.squeeze(qgan.critic_loss_avg, axis=(1,2)).numpy()
